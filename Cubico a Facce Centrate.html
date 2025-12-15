@@ -5,20 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Struttura Cristallina CFC</title>
     <style>
-        body { margin: 0; overflow: hidden; background-color: #f0f0f0; font-family: 'Segoe UI', sans-serif; }
-        #info {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-            background: rgba(255, 255, 255, 0.9);
-            padding: 15px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            pointer-events: none;
-            border-left: 5px solid #3498db; /* Blu */
-        }
-        h1 { margin: 0; font-size: 1.5rem; color: #333; }
-        p { margin: 5px 0 0 0; font-size: 0.9rem; color: #666; }
+        body { margin: 0; overflow: hidden; background-color: #000000; font-family: 'Segoe UI', sans-serif; }
     </style>
     <script type="importmap">
         {
@@ -30,24 +17,19 @@
     </script>
 </head>
 <body>
-    <div id="info">
-        <h1>Cubica a Facce Centrate (CFC)</h1>
-        <p>Atomi sulle facce rossi.</p>
-    </div>
-
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         const atomRadius = 0.15;
         const bondRadius = 0.02;
-        const atomColor = 0x3498db;
+        const atomColor = 0x3498db; // Blu
         const atomColorUnique = 0xe74c3c;
         const bondColor = 0xbdc3c7;
 
         const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0xf0f0f0);
-        scene.fog = new THREE.Fog(0xf0f0f0, 5, 20);
+        scene.background = new THREE.Color(0x000000); // Sfondo nero
+        scene.fog = new THREE.Fog(0x000000, 5, 20); // Nebbia nera
 
         const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
         camera.position.set(4, 3, 5);
@@ -66,6 +48,76 @@
         dirLight.position.set(5, 10, 7);
         dirLight.castShadow = true;
         scene.add(dirLight);
+
+        const latticeGroup = new THREE.Group();
+        scene.add(latticeGroup);
+
+        function createAtom(x, y, z, isUnique = false) {
+            const geometry = new THREE.SphereGeometry(atomRadius, 32, 32);
+            const material = new THREE.MeshPhysicalMaterial({
+                color: isUnique ? atomColorUnique : atomColor,
+                metalness: 0.3, roughness: 0.2, clearcoat: 1.0
+            });
+            const atom = new THREE.Mesh(geometry, material);
+            atom.position.set(x, y, z);
+            atom.castShadow = true;
+            latticeGroup.add(atom);
+        }
+
+        function createBond(start, end) {
+            const startVec = new THREE.Vector3(start.x, start.y, start.z);
+            const endVec = new THREE.Vector3(end.x, end.y, end.z);
+            const direction = new THREE.Vector3().subVectors(endVec, startVec);
+            const geometry = new THREE.CylinderGeometry(bondRadius, bondRadius, direction.length(), 8);
+            const material = new THREE.MeshStandardMaterial({ color: bondColor });
+            const bond = new THREE.Mesh(geometry, material);
+            bond.position.copy(startVec).add(direction.multiplyScalar(0.5));
+            bond.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction.clone().normalize());
+            latticeGroup.add(bond);
+        }
+
+        const size = 1.5;
+        const half = size / 2;
+
+        // 1. Vertici
+        const corners = [
+            {x: -half, y: -half, z: -half}, {x: half, y: -half, z: -half},
+            {x: half, y: -half, z: half}, {x: -half, y: -half, z: half},
+            {x: -half, y: half, z: -half}, {x: half, y: half, z: -half},
+            {x: half, y: half, z: half}, {x: -half, y: half, z: half}
+        ];
+        corners.forEach(p => createAtom(p.x, p.y, p.z, false));
+
+        // 2. Centri delle Facce
+        const faces = [
+            {x: 0, y: -half, z: 0}, {x: 0, y: half, z: 0},
+            {x: -half, y: 0, z: 0}, {x: half, y: 0, z: 0},
+            {x: 0, y: 0, z: -half}, {x: 0, y: 0, z: half}
+        ];
+        faces.forEach(p => createAtom(p.x, p.y, p.z, true));
+
+        // 3. Legami
+        const bonds = [
+            [0,1], [1,2], [2,3], [3,0],
+            [4,5], [5,6], [6,7], [7,4],
+            [0,4], [1,5], [2,6], [3,7]
+        ];
+        bonds.forEach(pair => createBond(corners[pair[0]], corners[pair[1]]));
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+        animate();
+    </script>
+</body>
+</html>        scene.add(dirLight);
 
         const latticeGroup = new THREE.Group();
         scene.add(latticeGroup);
