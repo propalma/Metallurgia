@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Visualizzazione Reticoli Cristallini</title>
+    <!-- Import Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+    <style>
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: #1a1a1a; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+        }
+
+        #canvas-container { 
+            width: 100vw; 
+            height: 100vh; 
+            display: block; 
+        }
+
+        /* Pulsante Toggle Menu */
+        #menu-toggle-btn {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1001;
+            background: rgba(0, 0, 0, 0.8);
+            color: #4db8ff;
+            border: 1px solid #444;
+            padding: 8px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            backdrop-filter: blur(5px);
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        #menu-toggle-btn:hover {
+            background: rgba(77, 184, 255, 0.2);
+            border-color: #4db8ff;
+        }
+
+        /* Interfaccia Utente sovrapposta (HUD) */
+        #ui-panel {
+            position: absolute;
+            top: 70px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid #444;
+            max-width: 350px;
+            width: 90%;
+            backdrop-filter: blur(5px);
+            user-select: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            transform-origin: top left;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .hidden-panel {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+
+        h1 { 
+            margin: 0 0 15px 0; 
+            font-size: 1.2rem; 
+            border-bottom: 1px solid #666; 
+            padding-bottom: 10px; 
+            color: #4db8ff; 
+        }
+
+        .control-group { margin-bottom: 15px; }
+
+        label { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 8px; 
+            cursor: pointer; 
+            font-size: 0.9rem; 
+        }
+
+        /* Stile per il menu a tendina */
+        select {
+            width: 100%;
+            padding: 8px;
+            background-color: #333;
+            color: white;
+            border: 1px solid #555;
+            border-radius: 5px;
+            font-size: 0.9rem;
+            margin-top: 5px;
+            cursor: pointer;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: #4db8ff;
+        }
+
+        .select-label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+            font-size: 0.85rem;
+        }
+
+        input[type="checkbox"] { 
+            margin-right: 10px; 
+            accent-color: #4db8ff; 
+            transform: scale(1.2); 
+        }
+
+        .legend { margin-top: 15px; font-size: 0.85rem; border-top: 1px solid #444; padding-top: 10px;}
+        .legend-item { display: flex; align-items: center; margin-bottom: 5px; }
+
+        .dot { width: 12px; height: 12px; border-radius: 50%; margin-right: 10px; display: inline-block; }
+        .dot.ion { background-color: #ff3333; border: 1px solid white; }
+        .dot.ion-inter { background-color: #0066ff; border: 1px solid white; }
+        .dot.electron { background-color: #00ffff; box-shadow: 0 0 5px #00ffff; }
+        .dot.cell { border: 2px solid #ffff00; background: transparent; box-sizing: border-box; }
+
+        .info-text {
+            font-size: 0.8rem;
+            color: #ccc;
+            margin-top: 10px;
+            line-height: 1.4;
+            background: rgba(255,255,255,0.1);
+            padding: 10px;
+            border-radius: 6px;
+        }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 1.5rem;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="loading">Caricamento Modello 3D...</div>
+
+    <!-- Pulsante per mostrare/nascondere il menu -->
+    <button id="menu-toggle-btn">
+        <span>☰</span> Chiudi Menu
+    </button>
+      
+    <!-- Pannello di Controllo -->
+    <div id="ui-panel">
+        <h1>Struttura Cristallina</h1>
+        
+        <!-- Nuova Sezione Dropdown -->
+        <div class="control-group">
+            <span class="select-label">Tipo di Reticolo:</span>
+            <select id="lattice-type">
+                <option value="cubic">Cubico Semplice</option>
+                <option value="bcc">Cubico a Corpo Centrato (CCC)</option>
+                <option value="fcc">Cubico a Facce Centrate (CFC)</option>
+                <option value="hcp">Esagonale Compatto (EC)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="toggle-electrons" checked>
+                Mostra Nube Elettronica
+            </label>
+            <label>
+                <input type="checkbox" id="toggle-cell" checked>
+                Evidenzia Cella Elementare
+            </label>
+            <label>
+                <input type="checkbox" id="toggle-lattice" checked>
+                Mostra Intero Reticolo
+            </label>
+            <label>
+                <input type="checkbox" id="animate-electrons" checked>
+                Animazione Elettroni
+            </label>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <span class="dot ion"></span> 
+                <strong>Ione Principale</strong>
+            </div>
+            <div class="legend-item">
+                <span class="dot ion-inter"></span> 
+                <strong>Ione Intermedio</strong>
+            </div>
+            <div class="legend-item">
+                <span class="dot electron"></span> 
+                <strong>Nube Elettronica</strong>
+            </div>
+            <div class="legend-item">
+                <span class="dot cell"></span> 
+                <strong>Cella Elementare</strong>
+            </div>
+        </div>
+        
+        <div class="info-text" id="dynamic-info">
+            Ruota con il mouse per esplorare la struttura 3D.
+        </div>
+    </div>
+
+    <!-- Contenitore Canvas -->
+    <div id="canvas-container"></div>
+
+    <script>
+        // 1. CONFIGURAZIONE SCENA E CAMERA
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111111);
+        scene.fog = new THREE.Fog(0x111111, 10, 60);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 8);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        // 2. CONTROLLI ORBITALI
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 2;
+        controls.maxDistance = 30;
+
+        // 3. ILLUMINAZIONE
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+        scene.add(ambientLight);
+
+        const pointLight = new THREE.PointLight(0xffffff, 1);
+        pointLight.position.set(10, 10, 10);
+        scene.add(pointLight);
+
+        const pointLight2 = new THREE.PointLight(0x4444ff, 0.5);
+        pointLight2.position.set(-10, -5, -5);
+        scene.add(pointLight2);
+
+        // 4. GRUPPI OGGETTI
+        const latticeGroup = new THREE.Group();
+        const electronGroup = new THREE.Group();
+        const unitCellGroup = new THREE.Group();
+        
+        // Contenitore principale
+        const mainGroup = new THREE.Group();
+        mainGroup.add(latticeGroup);
+        mainGroup.add(unitCellGroup);
+        scene.add(mainGroup);
+        scene.add(electronGroup);
+
+        // 5. MATERIALI
+        const electronMaterial = new THREE.MeshBasicMaterial({
+            color: 0x00ffff,
+            transparent: true,
+            opacity: 0.8
+        });
+
+        // Funzione per creare texture personalizzate (Colore sfondo + segno PIÙ bianco)
+        function createIonTexture(bgColor) {
+            const c = document.createElement('canvas');
+            c.width = 128; c.height = 128;
+            const x = c.getContext('2d');
+            
+            // Sfondo colorato
+            x.fillStyle = bgColor; 
+            x.fillRect(0,0,128,128);
+            
+            // Segno + Bianco
+            x.fillStyle = 'white';
+            const barLengthH = 15; const barLengthV = 25;
+            const barThicknessH = 6; const barThicknessV = 4;
+            const cx = 64; const cy = 64;
+            x.fillRect(cx - barLengthH/2, cy - barThicknessH/2, barLengthH, barThicknessH);
+            x.fillRect(cx - barThicknessV/2, cy - barLengthV/2, barThicknessV, barLengthV);
+            
+            return new THREE.CanvasTexture(c);
+        }
+
+        // Texture per Ione Principale (Rosso)
+        const textureRed = createIonTexture('#ff3333');
+        // Texture per Ione Intermedio (Blu)
+        const textureBlue = createIonTexture('#0066ff');
+
+        // Materiale Ione Rosso
+        const ionMaterialPlus = new THREE.MeshStandardMaterial({ 
+            map: textureRed, 
+            color: 0xffffff, 
+            roughness: 0.4,
+            metalness: 0.3
+        });
+
+        // Materiale Ione Blu (Intermedio)
+        const ionMaterialIntermediate = new THREE.MeshStandardMaterial({ 
+            map: textureBlue, 
+            color: 0xffffff, 
+            roughness: 0.4,
+            metalness: 0.3
+        });
+
+        const geometrySphere = new THREE.SphereGeometry(0.5, 32, 32);
+
+        // 6. GENERAZIONE RETICOLO DINAMICO
+        const spacing = 2.5;
+        const gridSize = 3; 
+
+        // Helper per aggiungere atomi
+        function createAtom(x, y, z, isIntermediate = false) {
+            const mat = isIntermediate ? ionMaterialIntermediate : ionMaterialPlus;
+            const ion = new THREE.Mesh(geometrySphere, mat);
+            ion.position.set(x, y, z);
+            latticeGroup.add(ion);
+        }
+
+        function updateLattice() {
+            // Pulisce i gruppi esistenti
+            while(latticeGroup.children.length > 0){ 
+                latticeGroup.remove(latticeGroup.children[0]); 
+            }
+            while(unitCellGroup.children.length > 0){ 
+                unitCellGroup.remove(unitCellGroup.children[0]); 
+            }
+
+            const type = document.getElementById('lattice-type').value;
+            const offset = ((gridSize - 1) * spacing) / 2;
+
+            // Reset posizione gruppi - Default per strutture cubiche
+            latticeGroup.position.set(-offset, -offset, -offset);
+            unitCellGroup.position.set(0, 0, 0); 
+            
+            let showUnitBox = document.getElementById('toggle-cell').checked;
+
+            if (type === 'cubic') {
+                // Cubico Semplice
+                for (let x = 0; x < gridSize; x++) {
+                    for (let y = 0; y < gridSize; y++) {
+                        for (let z = 0; z < gridSize; z++) {
+                            createAtom(x * spacing, y * spacing, z * spacing, false);
+                        }
+                    }
+                }
+            } 
+            else if (type === 'bcc') {
+                // Cubico a Corpo Centrato (CCC)
+                for (let x = 0; x < gridSize; x++) {
+                    for (let y = 0; y < gridSize; y++) {
+                        for (let z = 0; z < gridSize; z++) {
+                            // Angoli
+                            createAtom(x * spacing, y * spacing, z * spacing, false);
+                            // Centro
+                            if (x < gridSize -1 && y < gridSize -1 && z < gridSize -1) {
+                                createAtom(
+                                    (x + 0.5) * spacing, 
+                                    (y + 0.5) * spacing, 
+                                    (z + 0.5) * spacing,
+                                    true
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            else if (type === 'fcc') {
+                // Cubico a Facce Centrate (CFC)
+                for (let x = 0; x < gridSize; x++) {
+                    for (let y = 0; y < gridSize; y++) {
+                        for (let z = 0; z < gridSize; z++) {
+                            createAtom(x * spacing, y * spacing, z * spacing, false);
+                            
+                            if (x < gridSize -1 && y < gridSize -1) {
+                                createAtom((x + 0.5) * spacing, (y + 0.5) * spacing, z * spacing, true);
+                            }
+                            if (x < gridSize -1 && z < gridSize -1) {
+                                createAtom((x + 0.5) * spacing, y * spacing, (z + 0.5) * spacing, true);
+                            }
+                            if (y < gridSize -1 && z < gridSize -1) {
+                                createAtom(x * spacing, (y + 0.5) * spacing, (z + 0.5) * spacing, true);
+                            }
+                        }
+                    }
+                }
+            }
+            else if (type === 'hcp') {
+                // Esagonale Compatto (EC)
+                
+                // Centriamo visivamente il gruppo
+                latticeGroup.position.set(-offset*2.5, -offset, -offset*1.5);
+
+                const a = spacing;          // Parametro reticolare a
+                const c = a * 1.633;        // Parametro reticolare c (altezza cella)
+                const h_half = c / 2;       // Distanza tra layer A e B
+                const rowHeight = a * Math.sqrt(3) / 2; // Altezza triangolo equilatero (distanza righe Z)
+
+                for (let k = 0; k < gridSize * 2; k++) { // Layers (Y)
+                    const yPos = k * h_half;
+                    const isLayerB = k % 2 !== 0; // Layer intermedi sfalsati
+                    
+                    for (let j = 0; j < gridSize * 2; j++) { // Rows (Z)
+                        // RIPRISTINATO LIMITE I A 4 (Rimosso colonna extra)
+                        for (let i = 0; i < 5; i++) { // Cols (X)
+                            
+                            // RIMUOVI ATOMI BLU NELL'ULTIMA COLONNA (i=3) per evitare che sporgano
+                            if (isLayerB && i >= 4) continue;
+
+                            let xPos = i * a;
+                            let zPos = j * rowHeight;
+
+                            // Sfalsamento delle righe esagonali (ogni riga pari/dispari lungo Z sfalsa X)
+                            if (j % 2 !== 0) {
+                                xPos += a * 0.5;
+                            }
+
+                            // Sfalsamento del Layer B (Centroidi dei triangoli del Layer A)
+                            if (isLayerB) {
+                                xPos += a * 0.5;       // Sposta al centro della base del triangolo
+                                zPos += rowHeight / 3; // Sposta al centroide (1/3 dell'altezza)
+                            }
+
+                            if(j < 5 && k < 5) {
+                                createAtom(xPos, yPos, zPos, isLayerB);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 7. Rigenerazione Cella Elementare
+            if (showUnitBox) {
+                if (type === 'hcp') {
+                    // --- SETUP CELLA ESAGONALE CORRETTO ---
+                    const a = spacing;
+                    const c = a * 1.633;
+                    const h_half = c / 2;
+                    const rowHeight = a * Math.sqrt(3) / 2;
+
+                    // Il cilindro Three.js è orientato verticalmente (Y) di default.
+                    const hexGeo = new THREE.CylinderGeometry(a, a, c, 6);
+                    
+                    // ROTAZIONE DI 30 GRADI (PI/6)
+                    hexGeo.rotateY(Math.PI / 6);
+                    
+                    const edges = new THREE.EdgesGeometry(hexGeo);
+                    const cellHighlight = new THREE.LineSegments(edges, new THREE.LineBasicMaterial({ color: 0xffff00 }));
+                    
+                    const cellVolume = new THREE.Mesh(
+                        hexGeo,
+                        new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.15, side: THREE.DoubleSide })
+                    );
+
+                    // Calcolo Centro: DAVANTI - ALTO - SINISTRA
+                    // Sinistra: i=0
+                    // Davanti: j=2 (Riga 2, vicina al "fronte" Z+)
+                    // Alto: k=2 (Base della cella che sale verso k=4)
+                    
+                    let anchorX = 2.5;
+                    let anchorZ = 1.5 * rowHeight;
+                    let anchorY = c; // k=2 * h_half = c
+
+                    let centerX = anchorX;
+                    let centerY = anchorY + (c / 2); // Centro geometrico cilindro
+                    let centerZ = anchorZ;
+
+                    // Applichiamo posizione locale agli oggetti
+                    cellHighlight.position.set(centerX, centerY, centerZ);
+                    cellVolume.position.set(centerX, centerY, centerZ);
+
+                    // POSIZIONAMENTO GRUPPO INDIPENDENTE
+                    unitCellGroup.position.set(-offset*1.5, -offset, -offset);
+                    
+                    unitCellGroup.add(cellHighlight);
+                    unitCellGroup.add(cellVolume);
+
+                } else {
+                    // --- SETUP CELLA CUBICA ---
+                    const boxGeo = new THREE.BoxGeometry(spacing, spacing, spacing);
+                    const dummyMesh = new THREE.Mesh(boxGeo);
+                    
+                    // POSIZIONE CENTRO: Davanti-Alto-Sinistra relativa al blocco 3x3x3
+                    // Indici cella: x=0, y=1, z=1
+                    // Centro cella: (0+0.5)s, (1+0.5)s, (1+0.5)s = 0.5, 1.5, 1.5
+                    // Modifica questi valori per cambiare la posizione della cella gialla nelle strutture cubiche
+                    dummyMesh.position.set(spacing * 1.5, spacing * 1.5, spacing * 1.5); 
+                    
+                    const cellHighlight = new THREE.Box3Helper(new THREE.Box3().setFromObject(dummyMesh), 0xffff00);
+
+                    const cellVolume = new THREE.Mesh(
+                        boxGeo,
+                        new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.1, side: THREE.DoubleSide })
+                    );
+                    cellVolume.position.set(spacing * 1.5, spacing * 1.5, spacing * 1.5);
+
+                    // Allinea il gruppo della cella con il gruppo degli atomi cubici
+                    unitCellGroup.position.set(-offset, -offset, -offset);
+
+                    unitCellGroup.add(cellHighlight);
+                    unitCellGroup.add(cellVolume);
+                }
+                unitCellGroup.visible = true;
+            } else {
+                unitCellGroup.visible = false;
+            }
+        }
+
+        // Inizializza il reticolo
+        updateLattice();
+
+        // Listener cambio menu
+        document.getElementById('lattice-type').addEventListener('change', () => {
+            updateLattice();
+            // Aggiorna info
+            const type = document.getElementById('lattice-type').value;
+            const info = document.getElementById('dynamic-info');
+            if(type === 'hcp') {
+                info.innerText = "Esagonale Compatto: Gli atomi blu formano il piano intermedio 'B' (ABAB...). Cella verticale.";
+            } else if (type === 'fcc') {
+                info.innerText = "Cubico a Facce Centrate: Atomi rossi ai vertici, blu al centro delle facce.";
+            } else if (type === 'bcc') {
+                info.innerText = "Cubico a Corpo Centrato: Atomi rossi ai vertici, l'atomo blu è al centro del corpo.";
+            } else {
+                info.innerText = "Cubico Semplice: Solo atomi rossi ai vertici della cella.";
+            }
+        });
+
+
+        // 8. GENERAZIONE ELETTRONI
+        const electronCount = 200;
+        const electrons = [];
+        const electronVelocities = [];
+        const bounds = (gridSize * spacing) / 1.2; 
+        const particleGeo = new THREE.SphereGeometry(0.1, 8, 8);
+
+        for(let i=0; i<electronCount; i++) {
+            const electron = new THREE.Mesh(particleGeo, electronMaterial);
+            
+            electron.position.set(
+                (Math.random() - 0.5) * bounds * 2,
+                (Math.random() - 0.5) * bounds * 2,
+                (Math.random() - 0.5) * bounds * 2
+            );
+            
+            electronGroup.add(electron);
+            electrons.push(electron);
+
+            electronVelocities.push(new THREE.Vector3(
+                (Math.random() - 0.5) * 0.15,
+                (Math.random() - 0.5) * 0.15,
+                (Math.random() - 0.5) * 0.15
+            ));
+        }
+
+        // 9. LOGICA UI GENERALE
+        const checkboxElectrons = document.getElementById('toggle-electrons');
+        const checkboxCell = document.getElementById('toggle-cell');
+        const checkboxLattice = document.getElementById('toggle-lattice');
+        const checkboxAnimate = document.getElementById('animate-electrons');
+        const menuBtn = document.getElementById('menu-toggle-btn');
+        const uiPanel = document.getElementById('ui-panel');
+        const loadingScreen = document.getElementById('loading');
+
+        if(loadingScreen) loadingScreen.style.display = 'none';
+
+        if(menuBtn && uiPanel) {
+            menuBtn.addEventListener('click', () => {
+                uiPanel.classList.toggle('hidden-panel');
+                const isHidden = uiPanel.classList.contains('hidden-panel');
+                menuBtn.innerHTML = isHidden ? '<span>☰</span> Menu' : '<span>✕</span> Chiudi Menu';
+            });
+        }
+
+        if(checkboxElectrons) {
+            checkboxElectrons.addEventListener('change', (e) => {
+                electronGroup.visible = e.target.checked;
+            });
+        }
+
+        if(checkboxCell) {
+            checkboxCell.addEventListener('change', (e) => {
+                updateLattice(); 
+            });
+        }
+
+        if(checkboxLattice) {
+            checkboxLattice.addEventListener('change', (e) => {
+                latticeGroup.visible = e.target.checked;
+            });
+        }
+
+        // 10. LOOP DI ANIMAZIONE
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (checkboxAnimate && checkboxAnimate.checked && electronGroup.visible) {
+                for(let i=0; i<electrons.length; i++) {
+                    const e = electrons[i];
+                    const v = electronVelocities[i];
+
+                    e.position.add(v);
+
+                    if(e.position.x > bounds || e.position.x < -bounds) v.x = -v.x;
+                    if(e.position.y > bounds || e.position.y < -bounds) v.y = -v.y;
+                    if(e.position.z > bounds || e.position.z < -bounds) v.z = -v.z;
+                }
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
